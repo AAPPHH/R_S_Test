@@ -1,0 +1,13 @@
+name: ray_rllib_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - gymnasium
+  - opencv
+  - ffmpeg
+  - matplotlib  
+  - pip:
+      - "ray[rllib]"
+      - "gymnasium[all]
+
