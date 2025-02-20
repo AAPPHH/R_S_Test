@@ -5,6 +5,15 @@ import time
 import pickle
 import gymnasium as gym
 
+log_file = open("/home/john/R_S_Test/logs.txt", "a")
+def log_message(message):
+    print(message)  # Optional: Ausgabe auch in die Konsole, falls gewünscht
+    log_file.write(message + "\n")
+    log_file.flush()  # Sicherstellen, dass die Ausgabe sofort geschrieben wird
+
+log_message("Starte Ray Pong Test")
+print("Starte Ray Pong Test")
+
 H = 200  # The number of hidden layer neurons.
 gamma = 0.99  # The discount factor for reward.
 decay_rate = 0.99  # The decay factor for RMSProp leaky sum of grad^2.
@@ -139,7 +148,16 @@ os.environ["OMP_NUM_THREADS"] = "1"
 # numpy is imported).
 os.environ["MKL_NUM_THREADS"] = "1"
 
-ray.init()
+try:
+    ray_address = os.environ.get("RAY_ADDRESS", "auto")
+    print(f"Connecting to Ray at address: {ray_address}")
+
+    # Initialize Ray with the explicit address
+    ray.init(address=ray_address, ignore_reinit_error=True)
+    print("Cluster resources:", ray.cluster_resources())
+except ConnectionError:
+    ray.init()
+
 
 
 @ray.remote
@@ -179,17 +197,19 @@ if os.path.exists(checkpoint_path):
     model.weights = checkpoint_data["model_weights"]
     rmsprop_cache = checkpoint_data["rmsprop_cache"]
     running_reward = checkpoint_data["running_reward"]
+    log_message(f"Checkpoint loaded. Resuming training at iteration {start_iter}.")
     print(f"Checkpoint geladen. Training startet wieder bei Iteration {start_iter}.")
 else:
     start_iter = 1
     running_reward = None
     rmsprop_cache = {k: np.zeros_like(v) for k, v in model.weights.items()}
+    log_message("No checkpoint found, starting training at iteration 1.")
     print("Kein Checkpoint vorhanden, starte Training bei Iteration 1.")
 
 grad_buffer = {k: np.zeros_like(v) for k, v in model.weights.items()}
 
 iterations_to_run = 1000
-batch_size = 20 
+batch_size = 128
 actors = [RolloutWorker.remote() for _ in range(batch_size)]
 
 for i in range(start_iter, start_iter + iterations_to_run):
@@ -209,6 +229,10 @@ for i in range(start_iter, start_iter + iterations_to_run):
         )
 
     end_time = time.time()
+    log_message(
+        f"Batch {i} computed {batch_size} rollouts in {end_time - start_time:.2f}s, "
+        f"running mean is {running_reward}"
+    )
     print(
         f"Batch {i} computed {batch_size} rollouts in {end_time - start_time:.2f}s, "
         f"running mean is {running_reward}"
@@ -226,4 +250,5 @@ for i in range(start_iter, start_iter + iterations_to_run):
         }
         with open(checkpoint_path, "wb") as f:
             pickle.dump(checkpoint_data, f)
+        log_message(f"Checkpoint saved at iteration {i}.")
         print(f"Checkpoint bei Iteration {i} gespeichert.")
